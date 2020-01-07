@@ -802,6 +802,30 @@ riscv_apply_const_reloc (bfd_reloc_code_real_type reloc_type, bfd_vma value)
     case BFD_RELOC_RISCV_LO12_I:
       return ENCODE_ITYPE_IMM (value);
 
+    case BFD_RELOC_RISCV_HI20_64:
+      value  = value >> 32;
+      return ENCODE_UTYPE_IMM (RISCV_CONST_HIGH_PART (value));
+
+    case BFD_RELOC_RISCV_LO12_S_64:
+      value  = value >> 32;
+      return ENCODE_STYPE_IMM (value);
+
+    case BFD_RELOC_RISCV_LO12_I_64:
+      value  = value >> 32;
+      return ENCODE_ITYPE_IMM (value);
+
+    case BFD_RELOC_RISCV_HI20_32:
+      value  = value & ((1LL << 32) - 1);
+      return ENCODE_UTYPE_IMM (RISCV_CONST_HIGH_PART (value));
+
+    case BFD_RELOC_RISCV_LO12_S_32:
+      value  = value & ((1LL << 32) - 1);
+      return ENCODE_STYPE_IMM (value);
+
+    case BFD_RELOC_RISCV_LO12_I_32:
+      value  = value & ((1LL << 32) - 1);
+      return ENCODE_ITYPE_IMM (value);
+
     default:
       abort ();
     }
@@ -1037,6 +1061,19 @@ riscv_call (int destreg, int tempreg, expressionS *ep,
   macro_build (NULL, "jalr", "d,s", destreg, tempreg);
 }
 
+static void
+load_large_address (int destreg, int tempreg, expressionS *ep)
+{
+  macro_build (ep, "lui", "d,u", destreg, BFD_RELOC_RISCV_HI20_64);
+  macro_build (ep, "addi", "d,s,j", destreg, destreg, BFD_RELOC_RISCV_LO12_I_64);
+  md_assemblef ("slli x%d, x%d, 0x20", destreg, destreg);
+  macro_build (ep, "lui", "d,u", tempreg, BFD_RELOC_RISCV_HI20_32);
+  macro_build (ep, "addi", "d,s,j", tempreg, tempreg, BFD_RELOC_RISCV_LO12_I_32);
+  md_assemblef ("slli x%d, x%d, 0x20", tempreg, tempreg);
+  md_assemblef ("srli x%d, x%d, 0x20", tempreg, tempreg);
+  md_assemblef ("or x%d, x%d, x%d", destreg, destreg, tempreg);
+}
+
 /* Load an integer constant into a register.  */
 
 static void
@@ -1118,6 +1155,11 @@ macro (struct riscv_cl_insn *ip, expressionS *imm_expr,
       else /* Local PIC symbol, or any non-PIC symbol */
 	pcrel_load (rd, rd, imm_expr, "addi",
 		    BFD_RELOC_RISCV_PCREL_HI20, BFD_RELOC_RISCV_PCREL_LO12_I);
+      break;
+
+    case M_LA_LARGE:
+    case M_LLA_LARGE:
+      load_large_address (rd, rs1, imm_expr);
       break;
 
     case M_LA_TLS_GD:
@@ -2371,14 +2413,20 @@ md_apply_fix (fixS *fixP, valueT *valP, segT seg ATTRIBUTE_UNUSED)
 
   switch (fixP->fx_r_type)
     {
+    case BFD_RELOC_RISCV_HI20_64:
     case BFD_RELOC_RISCV_HI20:
     case BFD_RELOC_RISCV_LO12_I:
     case BFD_RELOC_RISCV_LO12_S:
+      relaxable = TRUE;
+    case BFD_RELOC_RISCV_LO12_I_64:
+    case BFD_RELOC_RISCV_LO12_S_64:
+    case BFD_RELOC_RISCV_HI20_32:
+    case BFD_RELOC_RISCV_LO12_I_32:
+    case BFD_RELOC_RISCV_LO12_S_32:
       bfd_putl32 (riscv_apply_const_reloc (fixP->fx_r_type, *valP)
 		  | bfd_getl32 (buf), buf);
       if (fixP->fx_addsy == NULL)
 	fixP->fx_done = TRUE;
-      relaxable = TRUE;
       break;
 
     case BFD_RELOC_RISCV_GOT_HI20:

@@ -387,6 +387,8 @@ enum
 {
   M_LA,
   M_LLA,
+  M_LA_LARGE,
+  M_LLA_LARGE,
   M_LA_TLS_GD,
   M_LA_TLS_IE,
   M_LB,

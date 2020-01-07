@@ -1435,6 +1435,36 @@ perform_relocation (const reloc_howto_type *howto,
 
   switch (ELFNN_R_TYPE (rel->r_info))
     {
+    case R_RISCV_HI20_64:
+      value = value >> 32;
+      value = ENCODE_UTYPE_IMM (RISCV_CONST_HIGH_PART (value));
+      break;
+
+    case R_RISCV_LO12_I_64:
+      value = value >> 32;
+      value = ENCODE_ITYPE_IMM (value);
+      break;
+
+    case R_RISCV_LO12_S_64:
+      value = value >> 32;
+      value = ENCODE_STYPE_IMM (value);
+      break;
+
+    case R_RISCV_HI20_32:
+      value &= ((1LL << 32) - 1);
+      value = ENCODE_UTYPE_IMM (RISCV_CONST_HIGH_PART (value));
+      break;
+
+    case R_RISCV_LO12_I_32:
+      value &= ((1LL << 32) - 1);
+      value = ENCODE_ITYPE_IMM (value);
+      break;
+
+    case R_RISCV_LO12_S_32:
+      value &= ((1LL << 32) - 1);
+      value = ENCODE_STYPE_IMM (value);
+      break;
+
     case R_RISCV_HI20:
     case R_RISCV_TPREL_HI20:
     case R_RISCV_PCREL_HI20:
@@ -1869,6 +1899,12 @@ riscv_elf_relocate_section (bfd *output_bfd,
 	case R_RISCV_SET32:
 	case R_RISCV_32_PCREL:
 	case R_RISCV_DELETE:
+	case R_RISCV_HI20_64:
+	case R_RISCV_LO12_I_64:
+	case R_RISCV_LO12_S_64:
+	case R_RISCV_HI20_32:
+	case R_RISCV_LO12_I_32:
+	case R_RISCV_LO12_S_32:
 	  /* These require no special handling beyond perform_relocation.  */
 	  break;
 
@@ -3682,6 +3718,72 @@ _bfd_riscv_relax_lui (bfd *abfd,
   return TRUE;
 }
 
+/* Relax large non-PIC global variable references.  */
+
+static bfd_boolean
+_bfd_riscv_relax_large_lui (bfd *abfd,
+			    asection *sec,
+			    asection *sym_sec,
+			    struct bfd_link_info *link_info,
+			    Elf_Internal_Rela *rel,
+			    bfd_vma symval,
+			    bfd_vma max_alignment,
+			    bfd_vma reserve_size,
+			    bfd_boolean *again,
+			    riscv_pcgp_relocs *pcgp_relocs ATTRIBUTE_UNUSED,
+			    bfd_boolean undefined_weak ATTRIBUTE_UNUSED)
+{
+  bfd_byte *contents = elf_section_data (sec)->this_hdr.contents;
+  bfd_vma gp = riscv_global_pointer_value (link_info);
+  //int use_rvc = elf_elfheader (abfd)->e_flags & EF_RISCV_RVC;
+
+  BFD_ASSERT (rel->r_offset + 32 <= sec->size);
+
+  if (gp)
+    {
+      /* If gp and the symbol are in the same output section, which is not the
+	 abs section, then consider only that output section's alignment.  */
+      struct bfd_link_hash_entry *h =
+	bfd_link_hash_lookup (link_info->hash, RISCV_GP_SYMBOL, FALSE, FALSE,
+			      TRUE);
+      if (h->u.def.section->output_section == sym_sec->output_section
+	  && sym_sec->output_section != bfd_abs_section_ptr)
+	max_alignment = (bfd_vma) 1 << sym_sec->output_section->alignment_power;
+    }
+
+  /* Is the reference in range of x0 or gp?
+     Valid gp range conservatively because of alignment issue.  */
+  if (VALID_ITYPE_IMM (symval)
+      || (symval >= gp
+	  && VALID_ITYPE_IMM (symval - gp + max_alignment + reserve_size))
+      || (symval < gp
+	  && VALID_ITYPE_IMM (symval - gp - max_alignment - reserve_size)))
+    {
+      unsigned sym = ELFNN_R_SYM (rel->r_info);
+
+      Elf_Internal_Rela *rel_hi64 = rel;
+      Elf_Internal_Rela *rel_lo64 = rel + 2;
+      Elf_Internal_Rela *rel_hi32 = rel + 3;
+      Elf_Internal_Rela *rel_lo32 = rel + 4;
+
+      rel_hi64->r_info = ELFNN_R_INFO (0, R_RISCV_NONE);
+      rel_hi32->r_info = ELFNN_R_INFO (0, R_RISCV_NONE);
+      rel_lo32->r_info = ELFNN_R_INFO (0, R_RISCV_NONE);
+
+      bfd_vma insn_lo64 = bfd_get_32 (abfd, contents + rel_lo64->r_offset);
+      bfd_put_32 (abfd, insn_lo64, contents + rel->r_offset);
+      rel_lo64->r_info = ELFNN_R_INFO (sym, R_RISCV_GPREL_I);
+      rel_lo64->r_offset = rel_hi64->r_offset;
+
+      *again = TRUE;
+      return riscv_relax_delete_bytes (abfd, sec, rel_hi64->r_offset + 4, 28,
+				       link_info);
+    }
+
+  return TRUE;
+}
+
+
 /* Relax non-PIC TLS references.  */
 
 static bfd_boolean
@@ -4025,6 +4127,8 @@ _bfd_riscv_relax_section (bfd *abfd, asection *sec,
 		   || type == R_RISCV_LO12_I
 		   || type == R_RISCV_LO12_S)
 	    relax_func = _bfd_riscv_relax_lui;
+	  else if (type == R_RISCV_HI20_64)
+	    relax_func = _bfd_riscv_relax_large_lui;
 	  else if (!bfd_link_pic(info)
 		   && (type == R_RISCV_PCREL_HI20
 		   || type == R_RISCV_PCREL_LO12_I
