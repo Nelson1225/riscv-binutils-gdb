@@ -15947,6 +15947,53 @@ display_riscv_attribute (unsigned char *p,
   return p;
 }
 
+static void
+get_symbol_name_pub_attribute (Filedata * filedata,
+			       unsigned int idx,
+			       const char **name)
+{
+  Elf_Internal_Sym *symtab = NULL;
+  char *strtab = NULL;
+  unsigned long nsyms = 0;
+  unsigned long strtablen = 0;;
+
+  if (filedata->section_headers != NULL)
+    {
+      Elf_Internal_Shdr * symsec;
+
+      /* Load the symbol and string sections.  */
+      for (symsec = filedata->section_headers;
+	   symsec < filedata->section_headers + filedata->file_header.e_shnum;
+	   symsec ++)
+	{
+	  if (symsec->sh_type == SHT_SYMTAB)
+	    {
+	      symtab = GET_ELF_SYMBOLS (filedata, symsec, &nsyms);
+
+	      if (symsec->sh_link < filedata->file_header.e_shnum)
+		{
+		  Elf_Internal_Shdr *strtab_sec =
+			filedata->section_headers + symsec->sh_link;
+
+		  strtab = (char *) get_data (NULL, filedata, strtab_sec->sh_offset,
+					      1, strtab_sec->sh_size,
+					      _("string table"));
+		  strtablen = strtab != NULL ? strtab_sec->sh_size : 0;
+		}
+	    }
+	}
+    }
+
+  if (symtab == NULL
+      || strtab == NULL
+      || (idx > nsyms)
+      || ELF_ST_TYPE ((symtab + idx)->st_info) != STT_FUNC
+      || (symtab + idx)->st_name >= strtablen)
+    name = NULL;
+  else
+    *name = strtab + (symtab + idx)->st_name;
+}
+
 static bfd_boolean
 process_attributes (Filedata * filedata,
 		    const char * public_name,
@@ -16057,6 +16104,7 @@ process_attributes (Filedata * filedata,
 		  unsigned int val;
 		  bfd_vma size;
 		  unsigned char * end;
+		  const char *sym_name = NULL;
 
 		  /* PR binutils/17531: Safe handling of corrupt files.  */
 		  if (attr_len < 6)
@@ -16096,13 +16144,14 @@ process_attributes (Filedata * filedata,
 		    case 1:
 		      printf (_("File Attributes\n"));
 		      break;
+		    case 3:
+		      READ_ULEB (val, p, end);
+		      get_symbol_name_pub_attribute (filedata, val, &sym_name);
+		      printf (_("Symbol Attributes: %s\n"), sym_name);
+		      break;
 		    case 2:
 		      printf (_("Section Attributes:"));
-		      goto do_numlist;
-		    case 3:
-		      printf (_("Symbol Attributes:"));
 		      /* Fall through.  */
-		    do_numlist:
 		      for (;;)
 			{
 			  READ_ULEB (val, p, end);

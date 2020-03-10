@@ -548,6 +548,9 @@
 #ifndef elf_backend_obj_attrs_handle_unknown
 #define elf_backend_obj_attrs_handle_unknown	NULL
 #endif
+#ifndef elf_backend_obj_attrs_extra_size
+#define elf_backend_obj_attrs_extra_size	NULL
+#endif
 #ifndef elf_backend_parse_gnu_properties
 #define elf_backend_parse_gnu_properties	NULL
 #endif
@@ -889,6 +892,7 @@ static struct elf_backend_data elfNN_bed =
   elf_backend_obj_attrs_section_type,
   elf_backend_obj_attrs_order,
   elf_backend_obj_attrs_handle_unknown,
+  elf_backend_obj_attrs_extra_size,
   elf_backend_parse_gnu_properties,
   elf_backend_merge_gnu_properties,
   elf_backend_setup_gnu_properties,

@@ -75,16 +75,52 @@ struct riscv_elf_link_hash_entry
 #define riscv_elf_hash_entry(ent) \
   ((struct riscv_elf_link_hash_entry *)(ent))
 
-struct _bfd_riscv_elf_obj_tdata
+static struct bfd_hash_entry *
+elf_func_attr_hash_newfunc (struct bfd_hash_entry *entry,
+			    struct bfd_hash_table *table, const char *string)
 {
-  struct elf_obj_tdata root;
+  /* Allocate the structure if it has not already been allocated by a
+     subclass.  */
+  if (entry == NULL)
+    {
+      entry = bfd_hash_allocate (table,
+				 sizeof (struct
+					 riscv_elf_func_attrs_entry));
+      if (entry == NULL)
+	return entry;
+    }
 
-  /* tls_type for each local got entry.  */
-  char *local_got_tls_type;
-};
+  /* Call the allocation method of the superclass.  */
+  entry = bfd_hash_newfunc (entry, table, string);
+  if (entry != NULL)
+    {
+      struct riscv_elf_func_attrs_entry *eh;
 
-#define _bfd_riscv_elf_tdata(abfd) \
-  ((struct _bfd_riscv_elf_obj_tdata *) (abfd)->tdata.any)
+      /* Initialize the local fields.  */
+      eh = (struct riscv_elf_func_attrs_entry *) entry;
+      eh->asymbol = NULL;
+      eh->h = NULL;
+      memset (eh->known_elf_attributes, 0x0, sizeof (eh->known_elf_attributes));
+    }
+
+  return entry;
+}
+
+static bfd_boolean
+elfNN_riscv_mkobject (bfd *abfd)
+{
+  if (!bfd_elf_allocate_object (abfd, sizeof (struct _bfd_riscv_elf_obj_tdata),
+				RISCV_ELF_DATA))
+    return FALSE;
+
+  /* Create function attributes hash table.  */
+  struct bfd_hash_table *table = &riscv_function_attr_table (abfd);
+  if (!bfd_hash_table_init (table, elf_func_attr_hash_newfunc,
+                            sizeof (struct riscv_elf_func_attrs_entry)))
+    return FALSE;
+
+  return TRUE;
+}
 
 #define _bfd_riscv_elf_local_got_tls_type(abfd) \
   (_bfd_riscv_elf_tdata (abfd)->local_got_tls_type)
@@ -3046,6 +3082,308 @@ riscv_merge_arch_attr_info (bfd *ibfd, char *in_arch, char *out_arch)
   return merged_arch_str;
 }
 
+static int
+riscv_merge_function_attrs (struct bfd_hash_entry *entry,
+			    void *data)
+{
+  struct riscv_elf_func_attrs_entry *in_entry, *out_entry;
+  obj_attribute *in_attr, *out_attr;
+  unsigned int i;
+  bfd *obfd;
+
+  obfd = (bfd *) data;
+  in_entry = (struct riscv_elf_func_attrs_entry *) entry;
+  /* If the function attribute doesn't set in the output bfd, then we just
+     create one and copy the information from in_entry.  */
+  out_entry = riscv_find_function_elf_attr_entry (obfd, in_entry->root.string);
+  if (out_entry->h == NULL && in_entry->h != NULL)
+    out_entry->h = in_entry->h;
+
+  for (i = LEAST_KNOWN_OBJ_ATTRIBUTE; i < NUM_KNOWN_OBJ_ATTRIBUTES; i++)
+    {
+      in_attr = in_entry->known_elf_attributes + i;
+      out_attr = out_entry->known_elf_attributes + i;
+      switch (i)
+	{
+	case Tag_RISCV_arch:
+	  if (out_attr->s == NULL)
+	    out_attr->s = in_attr->s;
+	  else if (strcmp (in_attr->s, out_attr->s) != 0)
+	    _bfd_error_handler
+	      (_("error: conflicting march setting for the function `%s'."),
+	       in_entry->root.string);
+	  break;
+/*
+	case Tag_RISCV_priv_spec:
+	case Tag_RISCV_priv_spec_minor:
+	case Tag_RISCV_priv_spec_revision:
+	  if (out_attr->i != in_attr->i)
+	    {
+            _bfd_error_handler
+              (_("error: conflicting priv spec version (major/minor/revision) "
+		 "for the function `%s'."), in_entry->root.string);
+	    }
+	  break;
+*/
+	case Tag_RISCV_unaligned_access:
+	  out_attr->i |= in_attr->i;
+	  break;
+	case Tag_RISCV_stack_align:
+	  if (out_attr->i == 0)
+	    out_attr->i = in_attr->i;
+	  else if (in_attr->i != 0
+		   && out_attr->i != 0
+		   && out_attr->i != in_attr->i)
+	    {
+	      _bfd_error_handler
+		(_("error: input use %u-byte stack aligned but the output "
+		   "use %u-byte stack aligned for the function `%s'."),
+		   in_attr->i, out_attr->i, in_entry->root.string);
+	    }
+	  break;
+	default:
+	  /* We don't care about these currently.  */
+	  break;
+	}
+
+      /* If out_attr was copied from in_attr then it won't have a type yet.  */
+      if (in_attr->type && !out_attr->type)
+	out_attr->type = in_attr->type;
+    }
+  return TRUE;
+}
+
+static int
+riscv_elf_copy_obj_func_attributes (struct bfd_hash_entry *entry,
+				    void *data)
+{
+  struct riscv_elf_func_attrs_entry *eh;
+  unsigned int i;
+  int type;
+  bfd *obfd;
+
+  obfd = (bfd *) data;
+  eh = (struct riscv_elf_func_attrs_entry *) entry;
+  obj_attribute *attrs = eh->known_elf_attributes;
+  for (i = LEAST_KNOWN_OBJ_ATTRIBUTE; i < NUM_KNOWN_OBJ_ATTRIBUTES; i++)
+    {
+      type = _bfd_elf_obj_attrs_arg_type (obfd, OBJ_ATTR_PROC, i);
+      switch (type & (ATTR_TYPE_FLAG_INT_VAL | ATTR_TYPE_FLAG_STR_VAL))
+	{
+	case ATTR_TYPE_FLAG_INT_VAL | ATTR_TYPE_FLAG_STR_VAL:
+	  if ((attrs + i)->s != NULL)
+	    riscv_elf_add_obj_func_attr_int_string (obfd, i,
+						    (attrs + i)->i,
+						    (attrs + i)->s,
+						    eh->asymbol, eh->h);
+	  break;
+	case ATTR_TYPE_FLAG_STR_VAL:
+	  if ((attrs + i)->s != NULL)
+	    riscv_elf_add_obj_func_attr_string (obfd, i,
+						(attrs + i)->s,
+						eh->asymbol, eh->h);
+	  break;
+	case ATTR_TYPE_FLAG_INT_VAL:
+	  riscv_elf_add_obj_func_attr_int (obfd, i,
+					   (attrs + i)->i,
+					   eh->asymbol, eh->h);
+	  break;
+	default:
+	  abort ();
+	}
+    }
+  return TRUE;
+}
+
+/* This function almost same as _bfd_elf_parse_attributes, but just parse
+   the function elf attributes.  */
+
+static void
+riscv_elf_parse_func_attributes (bfd *abfd, Elf_Internal_Shdr * hdr)
+{
+  bfd_byte *contents;
+  bfd_byte *p;
+  bfd_byte *p_end;
+  bfd_vma len;
+  const char *std_sec;
+
+  /* _bfd_elf_parse_attributes have handled this before, so we just return
+    without parsing the function attributes.  */
+  if (hdr->sh_size == 0
+      || hdr->sh_size > bfd_get_file_size (abfd))
+    return;
+
+  contents = (bfd_byte *) bfd_malloc (hdr->sh_size + 1);
+  if (!contents)
+    return;
+  if (!bfd_get_section_contents (abfd, hdr->bfd_section, contents, 0,
+                                 hdr->sh_size))
+    {
+      free (contents);
+      return;
+    }
+  /* Ensure that the buffer is NUL terminated.  */
+  contents[hdr->sh_size] = 0;
+  p = contents;
+  p_end = p + hdr->sh_size;
+  std_sec = get_elf_backend_data (abfd)->obj_attrs_vendor;
+
+  if (*(p++) == 'A')
+    {
+      len = hdr->sh_size - 1;
+
+      while (len > 0 && p < p_end - 4)
+	{
+	  unsigned namelen;
+	  bfd_vma section_len;
+
+	  section_len = bfd_get_32 (abfd, p);
+	  p += 4;
+	  if (section_len == 0)
+	    break;
+	  if (section_len > len)
+	    section_len = len;
+	  len -= section_len;
+	  if (section_len <= 4)
+	    {
+	      /* I'm not sure if we need to report the error here.  I believe
+		 _bfd_elf_parse_attributes have already handle this.  */
+	      _bfd_error_handler
+		(_("%pB: error: attribute section length too small: %" PRId64),
+		 abfd, (int64_t) section_len);
+	      break;
+	    }
+	  section_len -= 4;
+	  namelen = strnlen ((char *) p, section_len) + 1;
+	  if (namelen == 0 || namelen >= section_len)
+	    break;
+	  section_len -= namelen;
+	  if (std_sec && strcmp ((char *) p, std_sec) != 0)
+	    {
+	      /* We don't care GNU and other vendor sections.  */
+	      p += namelen + section_len;
+	      continue;
+	    }
+
+	  p += namelen;
+	  while (section_len > 0 && p < p_end)
+	    {
+	      unsigned int tag, tag_attr;
+	      unsigned int n;
+	      unsigned int val;
+	      bfd_vma subsection_len;
+	      bfd_byte *end;
+	      struct elf_link_hash_entry * h = NULL;
+
+	      tag = _bfd_safe_read_leb128 (abfd, p, &n, FALSE, p_end);
+	      p += n;
+	      if (p < p_end - 4)
+		subsection_len = bfd_get_32 (abfd, p);
+	      else
+		subsection_len = 0;
+	      p += 4;
+	      if (subsection_len == 0)
+		break;
+	      if (subsection_len > section_len)
+		subsection_len = section_len;
+	      section_len -= subsection_len;
+	      subsection_len -= n + 4;
+	      end = p + subsection_len;
+	      /* PR 17512: file: 0e8c0c90.  */
+	      if (end > p_end)
+		end = p_end;
+	      switch (tag)
+		{
+		case Tag_Symbol:
+		  while (p < end)
+		    {
+		      unsigned int symndx;
+		      int type;
+
+		      if (tag == Tag_Symbol
+			  && h == NULL)
+			{
+			  /* Try to find the global function symbol at first
+			     round.  */
+			  struct elf_link_hash_entry **sym_hashes;
+			  Elf_Internal_Shdr *symtab_hdr;
+
+			  symndx = _bfd_safe_read_leb128 (abfd, p, &n, FALSE,
+							  end);
+			  p += n;
+
+			  symtab_hdr = &elf_tdata (abfd)->symtab_hdr;
+			  sym_hashes = elf_sym_hashes (abfd);
+			  if (symndx < symtab_hdr->sh_info)
+			    {
+                              /* Not support for local symbol currently, need
+				 to fix this.  */
+			    }
+			  else
+			    {
+			      h = sym_hashes[symndx - symtab_hdr->sh_info];
+			      while (h->root.type == bfd_link_hash_indirect
+				     || h->root.type == bfd_link_hash_warning)
+				h = (struct elf_link_hash_entry *)
+					h->root.u.i.link;
+			    }
+
+			  /* Can not find the global function symbol, so just
+			     ignore this function attribute.  */
+			  if (h == NULL)
+			    {
+			      p += subsection_len;
+			      subsection_len = 0;
+			      break;
+			    }
+			}
+
+		      tag_attr = _bfd_safe_read_leb128 (abfd, p, &n, FALSE, end);
+		      p += n;
+		      type = _bfd_elf_obj_attrs_arg_type (abfd, OBJ_ATTR_PROC, tag_attr);
+		      switch (type & (ATTR_TYPE_FLAG_INT_VAL
+				      | ATTR_TYPE_FLAG_STR_VAL))
+			{
+			case ATTR_TYPE_FLAG_INT_VAL | ATTR_TYPE_FLAG_STR_VAL:
+			  val = _bfd_safe_read_leb128 (abfd, p, &n, FALSE, end);
+			  p += n;
+			  riscv_elf_add_obj_func_attr_int_string (abfd, tag_attr,
+								  val, (char *) p,
+								  NULL, h);
+			  p += strlen ((char *)p) + 1;
+			  break;
+			case ATTR_TYPE_FLAG_STR_VAL:
+			  riscv_elf_add_obj_func_attr_string (abfd, tag_attr,
+							      (char *) p,
+							      NULL, h);
+			  p += strlen ((char *)p) + 1;
+			  break;
+			case ATTR_TYPE_FLAG_INT_VAL:
+			  val = _bfd_safe_read_leb128 (abfd, p, &n, FALSE, end);
+			  p += n;
+			  riscv_elf_add_obj_func_attr_int (abfd, tag_attr,
+							   val, NULL, h);
+			  break;
+			default:
+			  abort ();
+			}
+		    }
+		  break;
+		case Tag_File:
+		case Tag_Section:
+		  /* Don't care about these type of sections.  */
+		default:
+		  /* Ignore things we don't know about.  */
+		  p += subsection_len;
+		  subsection_len = 0;
+		  break;
+		}
+	    }
+	}
+    }
+  free (contents);
+}
+
 /* Merge object attributes from IBFD into output_bfd of INFO.
    Raise an error if there are conflicting attributes.  */
 
@@ -3057,7 +3395,19 @@ riscv_merge_attributes (bfd *ibfd, struct bfd_link_info *info)
   obj_attribute *out_attr;
   bfd_boolean result = TRUE;
   const char *sec_name = get_elf_backend_data (ibfd)->obj_attrs_section;
+  struct bfd_hash_table *in_table = &riscv_function_attr_table (ibfd);
   unsigned int i;
+
+  /* Parse the elf attribute sections from each ibfds.  */
+  asection *o;
+  for (o = ibfd->sections; o != NULL; o = o->next)
+    {
+      Elf_Internal_Shdr *hdr;
+
+      hdr = &elf_section_data (o)->this_hdr;
+      if (hdr->sh_type == SHT_RISCV_ATTRIBUTES)
+	riscv_elf_parse_func_attributes (ibfd, hdr);
+    }
 
   /* Skip linker created files.  */
   if (ibfd->flags & BFD_LINKER_CREATED)
@@ -3073,11 +3423,12 @@ riscv_merge_attributes (bfd *ibfd, struct bfd_link_info *info)
     {
       /* This is the first object.  Copy the attributes.  */
       _bfd_elf_copy_obj_attributes (ibfd, obfd);
-
-      out_attr = elf_known_obj_attributes_proc (obfd);
+      bfd_hash_traverse (in_table, riscv_elf_copy_obj_func_attributes,
+			 (void *)obfd);
 
       /* Use the Tag_null value to indicate the attributes have been
 	 initialized.  */
+      out_attr = elf_known_obj_attributes_proc (obfd);
       out_attr[0].i = 1;
 
       return TRUE;
@@ -3146,6 +3497,9 @@ riscv_merge_attributes (bfd *ibfd, struct bfd_link_info *info)
       if (in_attr[i].type && !out_attr[i].type)
 	out_attr[i].type = in_attr[i].type;
     }
+
+  /* Merge the funciton attributes if possible.  */
+  bfd_hash_traverse (in_table, riscv_merge_function_attrs, (void *)obfd);
 
   /* Merge Tag_compatibility attributes and any common GNU ones.  */
   if (!_bfd_elf_merge_object_attributes (ibfd, info))
@@ -4335,6 +4689,215 @@ riscv_elf_obj_attrs_arg_type (int tag)
   return (tag & 1) != 0 ? ATTR_TYPE_FLAG_STR_VAL : ATTR_TYPE_FLAG_INT_VAL;
 }
 
+struct func_attrs_info
+{
+  bfd *abfd;
+  bfd_byte *p;
+  bfd_vma size;
+};
+
+static unsigned int
+riscv_get_symindx_size (bfd *abfd)
+{
+  const struct elf_backend_data *bed = get_elf_backend_data (abfd);
+  bfd_vma size = bed->s->arch_size;
+
+  if (size % 7)
+    return (size / 7) + 1;
+  else
+    return (size / 7);
+}
+
+static unsigned int
+riscv_get_func_symindx (bfd *abfd,
+                        struct riscv_elf_func_attrs_entry *entry)
+{
+  if (entry->asymbol != NULL)
+    return _bfd_elf_symbol_from_bfd_symbol (abfd, &entry->asymbol);
+  else if (entry->h != NULL)
+    return entry->h->indx;
+  else
+    /* This shouldn't happen.  */
+    return 0;
+}
+
+static int
+riscv_elf_obj_func_attrs_size (struct bfd_hash_entry *entry,
+			       void *data)
+{
+  struct riscv_elf_func_attrs_entry *eh;
+  struct func_attrs_info *info;
+  obj_attribute *attr;
+
+  /* Get the set information.  */
+  info = (struct func_attrs_info *) data;
+  eh = (struct riscv_elf_func_attrs_entry *) entry;
+  attr = eh->known_elf_attributes;
+  if (attr)
+    {
+      unsigned int i;
+      for (i = LEAST_KNOWN_OBJ_ATTRIBUTE; i < NUM_KNOWN_OBJ_ATTRIBUTES; i++)
+	info->size += obj_attr_size (i, &attr[i]);
+      info->size += 5 + riscv_get_symindx_size (info->abfd);
+    }
+
+  return TRUE;
+}
+
+static bfd_vma
+riscv_elf_obj_attrs_extra_size (bfd *abfd)
+{
+  struct bfd_hash_table *table;
+  struct func_attrs_info *info;
+  bfd_vma func_size;
+
+  /* Consider the function attributes.  */
+  info = (struct func_attrs_info *) bfd_zmalloc (sizeof
+						 (struct func_attrs_info));
+  info->abfd = abfd;
+  info->p = NULL;
+  info->size = 0;
+
+  table = &riscv_function_attr_table (abfd);
+  bfd_hash_traverse (table, riscv_elf_obj_func_attrs_size, info);
+  func_size = info->size;
+  free (info);
+
+  return func_size;
+}
+
+static bfd_byte *
+riscv_write_uleb128 (bfd *abfd, bfd_byte *p, unsigned int val)
+{
+  unsigned int i;
+  bfd_byte c;
+  unsigned int count = riscv_get_symindx_size (abfd);
+
+  for (i = 0; i < count; i++)
+    {
+      if (i < (count - 1))
+	c = (val & 0x7f) | 0x80;
+      else
+	c = val & 0x7f;
+      val >>= 7;
+      *(p++) = c;
+    }
+  return p;
+}
+
+static int
+riscv_set_func_attrs (struct bfd_hash_entry *entry,
+		      void *data)
+{
+  struct riscv_elf_func_attrs_entry *eh;
+  struct func_attrs_info *info;
+  obj_attribute *attr;
+  unsigned int i, symindx;
+  bfd_byte *sizep;
+  bfd_vma size;
+
+  /* Get the set information.  */
+  info = (struct func_attrs_info *) data;
+  eh = (struct riscv_elf_func_attrs_entry *) entry;
+  attr = eh->known_elf_attributes;
+  if (attr)
+    {
+      *(info->p++) = Tag_Symbol;
+      sizep = info->p;
+      info->p += 4;
+
+      symindx = riscv_get_func_symindx (info->abfd, eh);
+      info->p = riscv_write_uleb128 (info->abfd, info->p, symindx);
+      size = 5 + riscv_get_symindx_size (info->abfd);
+
+      for (i = LEAST_KNOWN_OBJ_ATTRIBUTE; i < NUM_KNOWN_OBJ_ATTRIBUTES; i++)
+	{
+	  unsigned int tag = i;
+	  if (get_elf_backend_data (info->abfd)->obj_attrs_order)
+	    tag = get_elf_backend_data (info->abfd)->obj_attrs_order (i);
+	  info->p = write_obj_attribute (info->p, tag, &attr[tag]);
+	  size += obj_attr_size (tag, &attr[tag]);
+	}
+      bfd_put_32 (info->abfd, size, sizep);
+      info->size += size;
+    }
+
+  return TRUE;
+}
+
+static void
+riscv_elf_set_obj_func_attrs_contents (bfd *abfd,
+				       bfd_byte *contents,
+				       bfd_vma size)
+{
+  struct bfd_hash_table *table;
+  struct func_attrs_info *info;
+
+  /* Consider the function attributes.  */
+  info = (struct func_attrs_info *) bfd_zmalloc (sizeof
+						 (struct func_attrs_info));
+  info->abfd = abfd;
+  info->p = contents;
+  info->size = 0;
+
+  table = &riscv_function_attr_table (abfd);
+  bfd_hash_traverse (table, riscv_set_func_attrs, info);
+
+  if (size != info->size)
+    abort ();
+
+  free (info);
+}
+
+static bfd_boolean
+elfNN_riscv_section_processing (bfd *abfd, Elf_Internal_Shdr *hdr)
+{
+  bfd_vma total_attr_size, file_attr_size, func_attr_size, gnu_attr_size;
+  bfd_byte *contents;
+
+  /* FIXME: The symbol index may be reordered and changed when outputing them
+     to the object file, but the attributes contents have been set in the 
+     write_object_file and create_obj_attrs_section for assembler.  Linker won't
+     meet this problem since it set the attributes contents after outputing the
+     symbol table.  If we set the function attributes by the
+     create_obj_attrs_section for assmebler, then we should find a suitable
+     place to upadte the symbol index after outputing the symol table, or we
+     shouldn't set the attributes contents until the symbol table is outputed.
+     I'm not sure which way is better.  Therefore, I set the function attributes
+     here both for assembler and linker.
+
+     Set the function elf attributes before we output the sections. The
+     file and GNU elf attributes are set by bfd_elf_set_obj_attrs_contents.  */
+
+  if (hdr->sh_type == SHT_RISCV_ATTRIBUTES
+      && hdr->sh_size > 0)
+    {
+      total_attr_size =  bfd_elf_obj_attr_size (abfd);
+      gnu_attr_size = vendor_obj_attr_size (abfd, OBJ_ATTR_GNU);
+      func_attr_size = get_elf_backend_data (abfd)->obj_attrs_extra_size (abfd);
+      file_attr_size = total_attr_size - gnu_attr_size - func_attr_size;
+      if (total_attr_size == 0
+	  || file_attr_size == 0)
+	return TRUE;
+
+      contents = (bfd_byte *) bfd_malloc (total_attr_size);
+      /* Set the file and GNU elf attributes again.  I know this seems stupid,
+	 so we need to find a better solutions.  */
+      bfd_elf_set_obj_attr_contents (abfd, contents, total_attr_size);
+      /* Set the function elf attributes.  */
+      riscv_elf_set_obj_func_attrs_contents (abfd, contents + file_attr_size,
+					     func_attr_size);
+      bfd_seek (abfd, hdr->sh_offset, SEEK_SET);
+      if (bfd_bwrite (contents, hdr->sh_size, abfd) != hdr->sh_size)
+	return FALSE;
+
+      free (contents);
+    }
+
+  return TRUE;
+}
+
+
 #define TARGET_LITTLE_SYM		riscv_elfNN_vec
 #define TARGET_LITTLE_NAME		"elfNN-littleriscv"
 
@@ -4384,5 +4947,10 @@ riscv_elf_obj_attrs_arg_type (int tag)
 #define elf_backend_obj_attrs_section_type      SHT_RISCV_ATTRIBUTES
 #undef  elf_backend_obj_attrs_section
 #define elf_backend_obj_attrs_section           ".riscv.attributes"
+#undef  elf_backend_obj_attrs_extra_size
+#define elf_backend_obj_attrs_extra_size        riscv_elf_obj_attrs_extra_size
+
+#define bfd_elfNN_mkobject		     elfNN_riscv_mkobject
+#define elf_backend_section_processing	     elfNN_riscv_section_processing
 
 #include "elfNN-target.h"

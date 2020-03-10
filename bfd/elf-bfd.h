@@ -1480,6 +1480,9 @@ struct elf_backend_data
      or give an error and return FALSE.  */
   bfd_boolean (*obj_attrs_handle_unknown) (bfd *, int);
 
+  /* Return the extra attributes size.  */
+  bfd_vma (*obj_attrs_extra_size) (bfd *);
+
   /* Parse GNU properties.  Return the property kind.  If the property
      is corrupt, issue an error message and return property_corrupt.  */
   enum elf_property_kind (*parse_gnu_properties) (bfd *, unsigned int,
@@ -2756,6 +2759,9 @@ extern bfd *_bfd_elf64_bfd_from_remote_memory
   (bfd *templ, bfd_vma ehdr_vma, bfd_size_type size, bfd_vma *loadbasep,
    int (*target_read_memory) (bfd_vma, bfd_byte *, bfd_size_type));
 
+extern bfd_byte *write_obj_attribute (bfd_byte *, unsigned int, obj_attribute *);
+extern bfd_vma obj_attr_size (unsigned int, obj_attribute *);
+extern bfd_vma vendor_obj_attr_size (bfd *, int);
 extern bfd_vma bfd_elf_obj_attr_size (bfd *);
 extern void bfd_elf_set_obj_attr_contents (bfd *, bfd_byte *, bfd_vma);
 extern int bfd_elf_get_obj_attr_int (bfd *, int, unsigned int);

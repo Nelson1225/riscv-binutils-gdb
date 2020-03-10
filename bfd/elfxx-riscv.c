@@ -1702,3 +1702,138 @@ riscv_arch_str (unsigned xlen, const riscv_subset_list_t *subset)
 
   return attr_str;
 }
+
+/* ...  */
+
+struct riscv_elf_func_attrs_entry *
+riscv_find_function_elf_attr_entry (bfd *abfd,
+				    const char *name)
+{
+  struct bfd_hash_table *table;
+  struct riscv_elf_func_attrs_entry *entry;
+
+  table = &riscv_function_attr_table (abfd);
+  entry = (struct riscv_elf_func_attrs_entry *)
+	bfd_hash_lookup (table, name, TRUE, TRUE);
+  if (entry == NULL)
+    {
+      /* Error reporting.  */
+      return NULL;
+    }
+
+  return entry;
+}
+
+/* Add an integer object attribute to the function.  */
+
+void
+riscv_elf_add_obj_func_attr_int (bfd *abfd,
+				 unsigned int tag,
+				 unsigned int i,
+				 asymbol *sym,
+				 struct elf_link_hash_entry *h)
+{
+  struct riscv_elf_func_attrs_entry *entry;
+  obj_attribute *attr;
+
+  /* Find the corresponding function attribute entry, if we can not find or
+     create one, then return directly.  */
+  if (sym != NULL)
+    {
+      /* For assembler.  */
+      entry = riscv_find_function_elf_attr_entry (abfd, sym->name);
+      if (entry == NULL)
+	return;
+      entry->asymbol = sym;
+    }
+  else if (h != NULL)
+    {
+      /* For linker.  */
+      entry = riscv_find_function_elf_attr_entry (abfd, h->root.root.string);
+      if (entry == NULL)
+	return;
+      entry->h = h;
+    }
+  else
+    return;
+
+  attr = entry->known_elf_attributes + tag;
+  attr->type = _bfd_elf_obj_attrs_arg_type (abfd, OBJ_ATTR_PROC, tag);
+  attr->i = i;
+}
+
+/* Add a string object attribute to hte function.  */
+
+void
+riscv_elf_add_obj_func_attr_string (bfd *abfd,
+				    unsigned int tag,
+				    const char *s,
+				    asymbol *sym,
+				    struct elf_link_hash_entry *h)
+{
+  struct riscv_elf_func_attrs_entry *entry;
+  obj_attribute *attr;
+
+  /* The same behavior with the riscv_elf_add_obj_func_attr_int.  */
+  if (sym != NULL)
+    {
+      /* For assembler.  */
+      entry = riscv_find_function_elf_attr_entry (abfd, sym->name);
+      if (entry == NULL)
+	return;
+      entry->asymbol = sym;
+    }
+  else if (h != NULL)
+    {
+      /* For linker.  */
+      entry = riscv_find_function_elf_attr_entry (abfd, h->root.root.string);
+      if (entry == NULL)
+	return;
+      entry->h = h;
+    }
+  else
+    return;
+
+  attr = entry->known_elf_attributes + tag;
+  attr->type = _bfd_elf_obj_attrs_arg_type (abfd, OBJ_ATTR_PROC, tag);
+  attr->s = _bfd_elf_attr_strdup (abfd, s);
+}
+
+/* Add a int plus string object attribute to the function.  */
+
+void
+riscv_elf_add_obj_func_attr_int_string (bfd *abfd,
+					unsigned int tag,
+					unsigned int i,
+					const char *s,
+					asymbol *sym,
+					struct elf_link_hash_entry *h)
+{
+  struct riscv_elf_func_attrs_entry *entry;
+  obj_attribute *attr;
+
+  /* The same behavior with the riscv_elf_add_obj_func_attr_int.  */
+  if (sym != NULL)
+    {
+      /* For assembler.  */
+      entry = riscv_find_function_elf_attr_entry (abfd, sym->name);
+      if (entry == NULL)
+	return;
+      entry->asymbol = sym;
+    }
+  else if (h != NULL)
+    {
+      /* For linker.  */
+      entry = riscv_find_function_elf_attr_entry (abfd, h->root.root.string);
+      if (entry == NULL)
+	return;
+      entry->h = h;
+    }
+  else
+    return;
+
+  attr = entry->known_elf_attributes + tag;
+  attr->type = _bfd_elf_obj_attrs_arg_type (abfd, OBJ_ATTR_PROC, tag);
+  attr->i = i;
+  attr->s = _bfd_elf_attr_strdup (abfd, s);
+}

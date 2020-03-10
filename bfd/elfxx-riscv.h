@@ -103,3 +103,51 @@ typedef enum riscv_isa_ext_class
 
 riscv_isa_ext_class_t
 riscv_get_prefix_class (const char *);
+
+/* All information about a function elf attribute.  */
+/* Use the function name to be the key of bfd_hash.  */
+
+struct riscv_elf_func_attrs_entry
+{
+  /* Base hash table entry structure.  */
+  struct bfd_hash_entry root;
+
+  asymbol *asymbol;
+
+  /* For the output bfd in linker.  */
+  struct elf_link_hash_entry *h;
+
+  /* Store all known elf attributes for the function.  */
+  obj_attribute known_elf_attributes[NUM_KNOWN_OBJ_ATTRIBUTES];
+};
+
+extern struct riscv_elf_func_attrs_entry *
+riscv_find_function_elf_attr_entry (bfd *, const char *);
+extern void
+riscv_elf_add_obj_func_attr_int (bfd *, unsigned int, unsigned int,
+				 asymbol *, struct elf_link_hash_entry *);
+extern void
+riscv_elf_add_obj_func_attr_string (bfd *, unsigned int, const char *,
+				    asymbol *, struct elf_link_hash_entry *);
+extern void
+riscv_elf_add_obj_func_attr_int_string (bfd *, unsigned int, unsigned int,
+					const char *, asymbol *,
+					struct elf_link_hash_entry *);
+
+/* RISCV ELF private object data.  */ 
+
+struct _bfd_riscv_elf_obj_tdata
+{
+  struct elf_obj_tdata root;
+
+  /* tls_type for each local got entry.  */
+  char *local_got_tls_type;
+
+  struct bfd_hash_table function_elf_attrs_table;
+};
+
+#define _bfd_riscv_elf_tdata(abfd) \
+  ((struct _bfd_riscv_elf_obj_tdata *)(abfd)->tdata.any)
+
+#define riscv_function_attr_table(abfd) \
+  (_bfd_riscv_elf_tdata(abfd)->function_elf_attrs_table)

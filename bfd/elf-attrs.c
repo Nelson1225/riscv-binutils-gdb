@@ -55,7 +55,7 @@ is_default_attr (obj_attribute *attr)
 }
 
 /* Return the size of a single attribute.  */
-static bfd_vma
+bfd_vma
 obj_attr_size (unsigned int tag, obj_attribute *attr)
 {
   bfd_vma size;
@@ -83,7 +83,7 @@ vendor_obj_attr_name (bfd *abfd, int vendor)
 /* Return the size of the object attributes section for VENDOR
    (OBJ_ATTR_PROC or OBJ_ATTR_GNU), or 0 if there are no attributes
    for that vendor to record and the vendor is OBJ_ATTR_GNU.  */
-static bfd_vma
+bfd_vma
 vendor_obj_attr_size (bfd *abfd, int vendor)
 {
   bfd_vma size;
@@ -104,6 +104,13 @@ vendor_obj_attr_size (bfd *abfd, int vendor)
        list;
        list = list->next)
     size += obj_attr_size (list->tag, &list->attr);
+
+  /* Let target backend to set the extra attrs.  The targte extra attrs are
+     only valid when the vendor file attrs are set.  */
+  if (vendor == OBJ_ATTR_PROC
+      && size != 0
+      && get_elf_backend_data (abfd)->obj_attrs_extra_size)
+    size += get_elf_backend_data (abfd)->obj_attrs_extra_size (abfd);
 
   /* <size> <vendor_name> NUL 0x1 <size> */
   return (size
@@ -144,7 +151,7 @@ write_uleb128 (bfd_byte *p, unsigned int val)
 
 /* Write attribute ATTR to butter P, and return a pointer to the following
    byte.  */
-static bfd_byte *
+bfd_byte *
 write_obj_attribute (bfd_byte *p, unsigned int tag, obj_attribute *attr)
 {
   /* Suppress default entries.  */
@@ -172,7 +179,7 @@ static void
 vendor_set_obj_attr_contents (bfd *abfd, bfd_byte *contents, bfd_vma size,
 			      int vendor)
 {
-  bfd_byte *p;
+  bfd_byte *p, *sizep;
   obj_attribute *attr;
   obj_attribute_list *list;
   int i;
@@ -184,10 +191,11 @@ vendor_set_obj_attr_contents (bfd *abfd, bfd_byte *contents, bfd_vma size,
   p += 4;
   memcpy (p, vendor_name, vendor_length);
   p += vendor_length;
-  *(p++) = Tag_File;
-  bfd_put_32 (abfd, size - 4 - vendor_length, p);
-  p += 4;
 
+  *(p++) = Tag_File;
+  sizep = p;
+  p += 4;
+  size = 5;
   attr = elf_known_obj_attributes (abfd)[vendor];
   for (i = LEAST_KNOWN_OBJ_ATTRIBUTE; i < NUM_KNOWN_OBJ_ATTRIBUTES; i++)
     {
@@ -195,12 +203,16 @@ vendor_set_obj_attr_contents (bfd *abfd, bfd_byte *contents, bfd_vma size,
       if (get_elf_backend_data (abfd)->obj_attrs_order)
 	tag = get_elf_backend_data (abfd)->obj_attrs_order (i);
       p = write_obj_attribute (p, tag, &attr[tag]);
+      size += obj_attr_size (tag, &attr[tag]);
     }
-
   for (list = elf_other_obj_attributes (abfd)[vendor];
        list;
        list = list->next)
-    p = write_obj_attribute (p, list->tag, &list->attr);
+    {
+      p = write_obj_attribute (p, list->tag, &list->attr);
+      size += obj_attr_size (list->tag, &list->attr);
+    }
+  bfd_put_32 (abfd, size, sizep);
 }
 
 /* Write the contents of the object attributes section to CONTENTS.  */
@@ -221,6 +233,13 @@ bfd_elf_set_obj_attr_contents (bfd *abfd, bfd_byte *contents, bfd_vma size)
 	vendor_set_obj_attr_contents (abfd, p, vendor_size, vendor);
       p += vendor_size;
       my_size += vendor_size;
+    }
+
+  if (vendor == OBJ_ATTR_PROC
+      && get_elf_backend_data (abfd)->obj_attrs_extra_size)
+    {
+      my_size += get_elf_backend_data (abfd)->obj_attrs_extra_size (abfd);
+      memset (p, 0, my_size);
     }
 
   if (size != my_size)
@@ -569,7 +588,7 @@ _bfd_elf_parse_attributes (bfd *abfd, Elf_Internal_Shdr * hdr)
 		  /* Don't have anywhere convenient to attach these.
 		     Fall through for now.  */
 		default:
-		  /* Ignore things we don't kow about.  */
+		  /* Ignore things we don't know about.  */
 		  p += subsection_len;
 		  subsection_len = 0;
 		  break;

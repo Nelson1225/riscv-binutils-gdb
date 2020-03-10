@@ -195,6 +195,9 @@ static bfd_boolean start_assemble = FALSE;
 /* Indicate arch attribute is explictly set.  */
 static bfd_boolean explicit_arch_attr = FALSE;
 
+/* Back up the file attributes, so that we can restored them immediately.  */
+obj_attribute file_known_elf_attributes[NUM_KNOWN_OBJ_ATTRIBUTES];
+
 /* Macros for encoding relaxation state for RVC branches and far jumps.  */
 #define RELAX_BRANCH_ENCODE(uncond, rvc, length)	\
   ((relax_substateT) 					\
@@ -780,6 +783,9 @@ md_begin (void)
 #define DECLARE_CSR_ALIAS(name, num) DECLARE_CSR(name, num);
 #include "opcode/riscv-opc.h"
 #undef DECLARE_CSR
+
+  /* Init the recorded file elf attributes.  */
+  memset (file_known_elf_attributes, 0, sizeof (file_known_elf_attributes));
 
   /* Set the default alignment for the text section.  */
   record_alignment (text_section, riscv_opts.rvc ? 1 : 2);
@@ -3181,17 +3187,43 @@ riscv_convert_symbolic_attribute (const char *name)
 static void
 s_riscv_attribute (int ignored ATTRIBUTE_UNUSED)
 {
-  int tag = obj_elf_vendor_attribute (OBJ_ATTR_PROC);
+  obj_attribute *attr;
+  int tag, type;
 
+  tag = obj_elf_vendor_attribute (OBJ_ATTR_PROC);
+
+  /* Back up the file elf attributes.  */
+  attr = elf_known_obj_attributes_proc (stdoutput);
+  type = _bfd_elf_obj_attrs_arg_type (stdoutput, OBJ_ATTR_PROC, tag);
+  switch (type & 3)
+    {
+    case 3:
+      file_known_elf_attributes[tag].type = type;
+      file_known_elf_attributes[tag].i = attr[tag].i;
+      file_known_elf_attributes[tag].s = _bfd_elf_attr_strdup (stdoutput,
+							       attr[tag].s);
+      break;
+    case 2:
+      file_known_elf_attributes[tag].type = type;
+      file_known_elf_attributes[tag].s = _bfd_elf_attr_strdup (stdoutput,
+							       attr[tag].s);
+      break;
+    case 1:
+      file_known_elf_attributes[tag].type = type;
+      file_known_elf_attributes[tag].i = attr[tag].i;
+      break;
+    default:
+      abort ();
+    }
+
+  /* Set the architecture for assembling.  */
   if (tag == Tag_RISCV_arch)
     {
       unsigned old_xlen = xlen;
 
       explicit_arch_attr = TRUE;
-      obj_attribute *attr;
-      attr = elf_known_obj_attributes_proc (stdoutput);
       if (!start_assemble)
-	riscv_set_arch (attr[Tag_RISCV_arch].s);
+	riscv_set_arch (attr[tag].s);
       else
 	as_fatal (_(".attribute arch must set before any instructions"));
 
@@ -3204,6 +3236,71 @@ s_riscv_attribute (int ignored ATTRIBUTE_UNUSED)
 	  if (! bfd_set_arch_mach (stdoutput, bfd_arch_riscv, mach))
 	    as_warn (_("Could not set architecture and machine"));
 	}
+    }
+}
+
+static asymbol *
+riscv_get_sym_from_input_line_and_check (void)
+{
+  char *name;
+  char c;
+  symbolS *sym;
+
+  c = get_symbol_name (&name);
+  sym = symbol_find_or_make (name);
+  *input_line_pointer = c;
+  SKIP_WHITESPACE_AFTER_NAME ();
+
+  /* There is no symbol name if input_line_pointer has not moved.  */
+  if (name == input_line_pointer)
+    as_bad (_("Missing symbol name in directive"));
+  return symbol_get_bfdsym (sym);
+}
+
+static void
+s_riscv_attribute_f (int ignored ATTRIBUTE_UNUSED)
+{
+  obj_attribute *attr;
+  int tag, type;
+  asymbol *sym;
+
+  sym = riscv_get_sym_from_input_line_and_check ();
+  if (*input_line_pointer == ',')
+    ++input_line_pointer;
+
+  tag = obj_elf_vendor_attribute (OBJ_ATTR_PROC);
+
+  if (tag == Tag_RISCV_arch)
+    {
+      /* Need to parse the string.  */
+    }
+
+  /* Need to add the attributes to the function, and then restore the file
+     elf attributes.  Since the obj_elf_vendor_attribute already set the
+     attribute to the file, but it should set to the function.  */
+  attr = elf_known_obj_attributes_proc (stdoutput);
+  type = _bfd_elf_obj_attrs_arg_type (stdoutput, OBJ_ATTR_PROC, tag);
+  switch (type & 3)
+    {
+    case 3:
+      riscv_elf_add_obj_func_attr_int_string (stdoutput, tag,
+					      attr[tag].i, attr[tag].s,
+					      sym, NULL);
+      attr[tag].i = file_known_elf_attributes[tag].i;
+      attr[tag].s = file_known_elf_attributes[tag].s;
+      break;
+    case 2:
+      riscv_elf_add_obj_func_attr_string (stdoutput, tag,
+					  attr[tag].s, sym, NULL);
+      attr[tag].s = file_known_elf_attributes[tag].s;
+      break;
+    case 1:
+      riscv_elf_add_obj_func_attr_int (stdoutput, tag,
+				       attr[tag].i, sym, NULL);
+      attr[tag].i = file_known_elf_attributes[tag].i;
+      break;
+    default:
+      abort ();
     }
 }
 
@@ -3223,6 +3320,7 @@ static const pseudo_typeS riscv_pseudo_table[] =
   {"sleb128", s_riscv_leb128, 1},
   {"insn", s_riscv_insn, 0},
   {"attribute", s_riscv_attribute, 0},
+  {"attribute_f", s_riscv_attribute_f, 0},
 
   { NULL, NULL, 0 },
 };
