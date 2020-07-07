@@ -1207,6 +1207,8 @@ riscv_parse_std_ext (riscv_parse_subset_t *rps,
   while (*p)
     {
       char subset[2] = {0, 0};
+      int default_major_version = 2;
+      int default_minor_version = 0;
 
       if (*p == 'x' || *p == 's' || *p == 'z')
 	break;
@@ -1236,13 +1238,19 @@ riscv_parse_std_ext (riscv_parse_subset_t *rps,
 
       std_exts++;
 
+      if (*p == 'v')
+	{
+	  default_major_version = 0;
+	  default_minor_version = 9;
+	}
+
       p++;
       p = riscv_parsing_subset_version (
 	    rps,
 	    march,
 	    p, &major_version, &minor_version,
-	    /* default_major_version= */ 2,
-	    /* default_minor_version= */ 0,
+	    default_major_version,
+	    default_minor_version,
 	    /* std_ext_p= */TRUE);
 
       subset[0] = std_ext;
