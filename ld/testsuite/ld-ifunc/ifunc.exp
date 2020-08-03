@@ -30,7 +30,8 @@ if {!(([istarget "i?86-*-*"]
        || [istarget "powerpc*-*-*"]
        || [istarget "aarch64*-*-*"]
        || [istarget "sparc*-*-*"]
-       || [istarget "s390*-*-*"])
+       || [istarget "s390*-*-*"]
+       || [istarget "riscv*-*-*"])
       && ([istarget "*-*-elf*"]
 	  || [istarget "*-*-nacl*"]
 	  || [istarget "*-*-linux*"]
@@ -721,7 +722,8 @@ run_ld_link_exec_tests [list \
 if { [isnative]
      && !([istarget "powerpc-*-*"]
            || [istarget "aarch64*-*-*"]
-           || [istarget "sparc*-*-*"]) } {
+           || [istarget "sparc*-*-*"]
+           || [istarget "riscv*-*-*"]) } {
 run_ld_link_exec_tests [list \
     [list \
 	"Run pr23169a" \
