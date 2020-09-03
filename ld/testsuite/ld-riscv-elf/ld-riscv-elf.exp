@@ -148,6 +148,11 @@ if [istarget "riscv*-*-*"] {
     run_dump_test_ifunc "ifunc-plt-02" pie
     run_dump_test_ifunc "ifunc-plt-02" pic
 
+    # Check the .rela.iplt overwrite issue.
+    run_dump_test_ifunc "ifunc-plt-got-overwrite" exe
+    run_dump_test_ifunc "ifunc-plt-got-overwrite" pie
+    run_dump_test_ifunc "ifunc-plt-got-overwrite" pic
+
     # Setup shared libraries.
     run_ld_link_tests {
 	{ "Build ifunc-caller.so"

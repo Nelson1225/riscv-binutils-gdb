@@ -118,6 +118,9 @@ struct riscv_elf_link_hash_table
   /* Used by local STT_GNU_IFUNC symbols.  */
   htab_t loc_hash_table;
   void * loc_hash_memory;
+
+  /* The index of the last unused .rel.iplt solt.  */
+  bfd_vma last_iplt_index;
 };
 
 
@@ -1502,6 +1505,11 @@ riscv_elf_size_dynamic_sections (bfd *output_bfd, struct bfd_link_info *info)
      local IFUNC symbols.  */
   htab_traverse (htab->loc_hash_table, allocate_local_ifunc_dynrelocs, info);
 
+  /* Used to resolve the dynamic relocs overwite problems when
+     generating static executable.  */
+  if (htab->elf.irelplt)
+    htab->last_iplt_index = htab->elf.irelplt->reloc_count - 1;
+
   if (htab->elf.sgotplt)
     {
       struct elf_link_hash_entry *got;
@@ -2208,7 +2216,7 @@ riscv_elf_relocate_section (bfd *output_bfd,
 		    else
 		      sreloc = htab->elf.irelplt;
 
-		    elf_append_rela (output_bfd, sreloc, &outrel);
+		    riscv_elf_append_rela (output_bfd, sreloc, &outrel);
 
 		    /* If this reloc is against an external symbol, we
 		       do not want to fiddle with the addend.  Otherwise,
@@ -3026,6 +3034,7 @@ riscv_elf_finish_dynamic_symbol (bfd *output_bfd,
       asection *sgot;
       asection *srela;
       Elf_Internal_Rela rela;
+      bfd_boolean use_elf_append_rela = TRUE;
 
       /* This symbol has an entry in the GOT.  Set it up.  */
 
@@ -3042,12 +3051,18 @@ riscv_elf_finish_dynamic_symbol (bfd *output_bfd,
 	  if (h->plt.offset == (bfd_vma) -1)
 	    {
 	      /* STT_GNU_IFUNC is referenced without PLT.  */
+
 	      if (htab->elf.splt == NULL)
 		{
-		  /* use .rel[a].iplt section to store .got relocations
+		  /* Use .rela.iplt section to store .got relocations
 		     in static executable.  */
 		  srela = htab->elf.irelplt;
+
+		  /* Do not use riscv_elf_append_rela to add dynamic
+		     relocs.  */
+		  use_elf_append_rela = FALSE;
 		}
+
 	      if (SYMBOL_REFERENCES_LOCAL (info, h))
 		{
 		  info->callbacks->minfo (_("Local IFUNC function `%s' in %pB\n"),
@@ -3095,14 +3110,14 @@ riscv_elf_finish_dynamic_symbol (bfd *output_bfd,
 	      return TRUE;
 	    }
 	}
-      /* If this is a local symbol reference, we just want to emit a RELATIVE
-	 reloc.  This can happen if it is a -Bsymbolic link, or a pie link, or
-	 the symbol was forced to be local because of a version file.
-	 The entry in the global offset table will already have been
-	 initialized in the relocate_section function.  */
       else if (bfd_link_pic (info)
 	       && SYMBOL_REFERENCES_LOCAL (info, h))
 	{
+	  /* If this is a local symbol reference, we just want to emit
+	     a RELATIVE reloc.  This can happen if it is a -Bsymbolic link,
+	     or a pie link, or the symbol was forced to be local because
+	     of a version file.  The entry in the global offset table will
+	     already have been initialized in the relocate_section function.  */
 	  BFD_ASSERT((h->got.offset & 1) != 0);
 	  asection *sec = h->root.u.def.section;
 	  rela.r_info = ELFNN_R_INFO (0, R_RISCV_RELATIVE);
@@ -3120,7 +3135,24 @@ riscv_elf_finish_dynamic_symbol (bfd *output_bfd,
 
       bfd_put_NN (output_bfd, 0,
 		  sgot->contents + (h->got.offset & ~(bfd_vma) 1));
-      riscv_elf_append_rela (output_bfd, srela, &rela);
+
+      if (use_elf_append_rela)
+	riscv_elf_append_rela (output_bfd, srela, &rela);
+      else
+	{
+	  /* Use riscv_elf_append_rela to add the dynamic relocs into
+	     .rela.iplt may cause the overwrite problems.  Since we insert
+	     the relocs for PLT didn't handle the reloc_index of .rela.iplt,
+	     but the riscv_elf_append_rela adds the relocs to the place
+	     that are calculated from the reloc_index (in seqential).
+	 
+	     One solution is that add these dynamic relocs (GOT IFUNC)
+	     from the last of .rela.iplt section.  */
+	  bfd_vma iplt_idx = htab->last_iplt_index--;
+	  bfd_byte *loc = srela->contents
+		  	  + iplt_idx * sizeof (ElfNN_External_Rela);
+	  bed->s->swap_reloca_out (output_bfd, &rela, loc);
+	}
     }
 
   if (h->needs_copy)
