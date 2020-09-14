@@ -19,6 +19,35 @@
 # MA 02110-1301, USA.
 #
 
+# name: The test name.
+# output: Which output you want?  (exe, pie, .so)
+proc run_dump_test_ifunc { name output } {
+    set asflags ""
+    set ldflags "-z nocombreloc"
+
+    switch -- $output {
+	exe {
+	    set ext ".exe"
+	}
+	pie {
+	    set ext ".pie"
+	    set ldflags "$ldflags -pie"
+	}
+	pic {
+	    set ext ".so"
+	    set ldflags "$ldflags -shared"
+	}
+    }
+
+    run_ld_link_tests [list \
+	[list "$name ($output)" \
+	      "$ldflags" "" "$asflags" \
+	      [list "$name.s"] \
+	      [concat [list "readelf -rW $name-$output.rd"] \
+		      [list "objdump -dw $name.d"]] \
+	      "$name$ext"]]
+}
+
 if [istarget "riscv*-*-*"] {
     run_dump_test "call-relax"
     run_dump_test "c-lui"
@@ -87,4 +116,61 @@ if [istarget "riscv*-*-*"] {
 	    {} "lib-nopic-01a.so" }
     }
     run_dump_test "lib-nopic-01b"
+
+    # IFUNC testcases.
+    if ![check_shared_lib_support] {
+	return
+    }
+
+    # Check ifunc by single type relocs.
+    run_dump_test_ifunc "ifunc-reloc-call-01" exe
+    run_dump_test_ifunc "ifunc-reloc-call-01" pie
+    run_dump_test_ifunc "ifunc-reloc-call-01" pic
+
+    run_dump_test_ifunc "ifunc-reloc-call-02" exe
+    run_dump_test_ifunc "ifunc-reloc-call-02" pie
+    run_dump_test_ifunc "ifunc-reloc-call-02" pic
+
+    run_dump_test_ifunc "ifunc-reloc-pcrel" exe
+    run_dump_test_ifunc "ifunc-reloc-pcrel" pie
+    run_dump_test_ifunc "ifunc-reloc-pcrel" pic
+
+    run_dump_test_ifunc "ifunc-reloc-data" exe
+    run_dump_test_ifunc "ifunc-reloc-data" pie
+    run_dump_test_ifunc "ifunc-reloc-data" pic
+
+    run_dump_test_ifunc "ifunc-reloc-got" exe
+    run_dump_test_ifunc "ifunc-reloc-got" pie
+    run_dump_test_ifunc "ifunc-reloc-got" pic
+
+    # Check the ifunc PLT and NO-PLT relocs.
+    run_dump_test_ifunc "ifunc-noplt" exe
+    run_dump_test_ifunc "ifunc-noplt" pie
+    run_dump_test_ifunc "ifunc-noplt" pic
+
+    run_dump_test_ifunc "ifunc-plt-01" exe
+    run_dump_test_ifunc "ifunc-plt-01" pie
+    run_dump_test_ifunc "ifunc-plt-01" pic
+
+    run_dump_test_ifunc "ifunc-plt-02" exe
+    run_dump_test_ifunc "ifunc-plt-02" pie
+    run_dump_test_ifunc "ifunc-plt-02" pic
+
+    # Setup shared libraries.
+    run_ld_link_tests {
+	{ "Build ifunc-caller.so"
+	  "-shared" "" "" {ifunc-caller.s}
+	  {} "ifunc-caller.so" }
+	{ "Build ifunc-resolver.so"
+	  "-shared" "" "" {ifunc-resolver.s}
+	  {} "ifunc-resolver.so" }
+    }
+    # The ifunc resolver and caller are in the seperate files.
+    # If ifunc resolver and caller are linked to the same module,
+    # then the result are the same as the run_dump_test_ifunc.
+    run_dump_test "ifunc-caller-resolver-exe"
+    run_dump_test "ifunc-caller-resolver-pie"
+    run_dump_test "ifunc-caller-resolver-pic"
+    run_dump_test "ifunc-caller-pcrel-pie"
+    run_dump_test "ifunc-caller-pcrel-pic"
 }
