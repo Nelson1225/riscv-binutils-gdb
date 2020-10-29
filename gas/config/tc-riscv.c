@@ -179,6 +179,7 @@ struct riscv_set_options
   int arch_attr; /* Emit arch attribute.  */
   int csr_check; /* Enable the CSR checking.  */
   int check_constraints; /* Enable/disable the match_func checking.  */
+  int fpu_load_fence; /* Add a fence after each fpu load.  */
 };
 
 static struct riscv_set_options riscv_opts =
@@ -190,6 +191,7 @@ static struct riscv_set_options riscv_opts =
   DEFAULT_RISCV_ATTR, /* arch_attr */
   0,	/* csr_check */
   0,	/* check_constraints */
+  1,	/* fpu_load_fence */
 };
 
 static void
@@ -1226,6 +1228,11 @@ append_insn (struct riscv_cl_insn *ip, expressionS *address_expr,
 
   add_fixed_insn (ip);
   install_insn (ip);
+
+  /* Workaround for ticket CIP-1412 - Add fence after each FPU load.  */
+  if (ip->insn_mo->pinfo & INSN_FPU_LOAD
+      && riscv_opts.fpu_load_fence)
+    md_assemble ("fence");
 
   /* We need to start a new frag after any instruction that can be
      optimized away or compressed by the linker during relaxation, to prevent
@@ -3051,6 +3058,8 @@ enum options
   OPTION_MPRIV_SPEC,
   OPTION_CHECK_CONSTRAINTS,
   OPTION_NO_CHECK_CONSTRAINTS,
+  OPTION_FPU_LOAD_FENCE,
+  OPTION_NO_FPU_LOAD_FENCE,
   OPTION_END_OF_ENUM
 };
 
@@ -3071,6 +3080,8 @@ struct option md_longopts[] =
   {"mpriv-spec", required_argument, NULL, OPTION_MPRIV_SPEC},
   {"mcheck-constraints", no_argument, NULL, OPTION_CHECK_CONSTRAINTS},
   {"mno-check-constraints", no_argument, NULL, OPTION_NO_CHECK_CONSTRAINTS},
+  {"mfpu-load-fence", no_argument, NULL, OPTION_FPU_LOAD_FENCE},
+  {"mno-fpu-load-fence", no_argument, NULL, OPTION_NO_FPU_LOAD_FENCE},
 
   {NULL, no_argument, NULL, 0}
 };
@@ -3171,6 +3182,14 @@ md_parse_option (int c, const char *arg)
 
     case OPTION_NO_CHECK_CONSTRAINTS:
       riscv_opts.check_constraints = FALSE;
+      break;
+
+    case OPTION_FPU_LOAD_FENCE:
+      riscv_opts.fpu_load_fence = TRUE;
+      break;
+
+    case OPTION_NO_FPU_LOAD_FENCE:
+      riscv_opts.fpu_load_fence = FALSE;
       break;
 
     default:

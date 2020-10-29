@@ -1,4 +1,4 @@
-#as: -march=rv64ifdq_zfh
+#as: -march=rv64ifdq_zfh -mno-fpu-load-fence
 #source: fp-zfh-insns.s
 #objdump: -dr
 

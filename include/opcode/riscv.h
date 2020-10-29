@@ -523,6 +523,8 @@ struct riscv_csr_extra
 #define INSN_8_BYTE		0x00000040
 #define INSN_16_BYTE		0x00000050
 
+#define INSN_FPU_LOAD		0x10000000
+
 /* Instruction is actually a macro.  It should be ignored by the
    disassembler, and requires special treatment by the assembler.  */
 #define INSN_MACRO		0xffffffff
