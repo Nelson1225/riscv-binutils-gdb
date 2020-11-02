@@ -1,4 +1,4 @@
-#as: -defsym __64_bit__=1 -mno-relax -march=rv64gqc_zfh
+#as: -defsym __64_bit__=1 -mno-relax -march=rv64gqc_zfh -mfpu-load-fence
 #source: fp-load-fence.s
 #objdump: -dr -Mno-aliases
 

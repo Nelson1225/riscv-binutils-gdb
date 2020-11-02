@@ -1,4 +1,4 @@
-#as: -mno-relax -march=rv32gc_zfh
+#as: -mno-relax -march=rv32gc_zfh -mfpu-load-fence
 #source: fp-load-fence.s
 #objdump: -dr -Mno-aliases
 

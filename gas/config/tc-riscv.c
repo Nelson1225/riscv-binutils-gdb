@@ -191,7 +191,7 @@ static struct riscv_set_options riscv_opts =
   DEFAULT_RISCV_ATTR, /* arch_attr */
   0,	/* csr_check */
   0,	/* check_constraints */
-  1,	/* fpu_load_fence */
+  0,	/* fpu_load_fence */
 };
 
 static void
