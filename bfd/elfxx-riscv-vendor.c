@@ -21,8 +21,14 @@
    see <http://www.gnu.org/licenses/>.  */
 
 
+static const char * const riscv_sifive_ext_strtab[] =
+{
+  "xsfcache", NULL
+};
+
 static const char ** const riscv_vendor_ext_strtab[] =
 {
+  (const char **) riscv_sifive_ext_strtab,
   NULL
 };
 

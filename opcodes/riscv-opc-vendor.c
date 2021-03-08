@@ -23,7 +23,20 @@
 #include "opcode/riscv.h"
 #include "opcode/riscv-vendor.h"
 
+const struct riscv_opcode riscv_sifive_opcodes[] =
+{
+/* name, xlen, isa, operands, match, mask, match_func, pinfo.  */
+/* SiFive specific cache control instruction.  */
+{"cflush.d.l1",   0, INSN_CLASS_XSFCACHE, "s",  MATCH_CFLUSH_D_L1, MASK_CFLUSH_D_L1, match_opcode, 0 },
+{"cdiscard.d.l1", 0, INSN_CLASS_XSFCACHE, "s",  MATCH_CDISCARD_D_L1, MASK_CDISCARD_D_L1, match_opcode, 0 },
+{"cflush.i.l1",   0, INSN_CLASS_XSFCACHE, "",   MATCH_CFLUSH_I_L1, MASK_CFLUSH_I_L1, match_opcode, 0 },
+
+/* Terminate the list.  */
+{0, 0, INSN_CLASS_NONE, 0, 0, 0, 0, 0 },
+};
+
 const struct riscv_opcode *riscv_vendor_opcodes[] =
 {
+  riscv_sifive_opcodes,
   NULL
 };

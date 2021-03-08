@@ -23,6 +23,9 @@
 
 enum riscv_vendor_insn_class
 {
+  /* SiFive extensions.  */
+  INSN_CLASS_XSFCACHE,
+
   INSN_CLASS_VENDOR_NUM
 };
 
@@ -32,5 +35,13 @@ enum reg_vendor_class
 };
 
 extern const struct riscv_opcode *riscv_vendor_opcodes[];
+
+/* SiFive specific cache control instruction.  */
+#define MATCH_CFLUSH_D_L1	0xfc000073
+#define MASK_CFLUSH_D_L1	0xfff07fff
+#define MATCH_CDISCARD_D_L1	0xfc200073
+#define MASK_CDISCARD_D_L1	0xfff07fff
+#define MATCH_CFLUSH_I_L1	0xfc100073
+#define MASK_CFLUSH_I_L1	0xffffffff
 
 #endif /* _RISCV_VENDOR_H_ */

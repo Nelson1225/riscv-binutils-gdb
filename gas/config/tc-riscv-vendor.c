@@ -20,17 +20,21 @@
 
 enum
 {
-  VENDOR_EXT_NUM = 0
+  SIFIVE_EXT = 0,
+  VENDOR_EXT_NUM
 };
+
+static htab_t op_sifive_hash;
 
 static void
 riscv_vendor_md_begin (void)
 {
   /* Init vendor/unratified registers and opcode hash tables.  */
+  op_sifive_hash = init_opcode_hash (riscv_vendor_opcodes[SIFIVE_EXT], FALSE);
 }
 
 static struct riscv_opcode *
-riscv_find_vendor_opcode_hash (char *str ATTRIBUTE_UNUSED)
+riscv_find_vendor_opcode_hash (char *str)
 {
   struct riscv_opcode *insn = NULL;
   unsigned int i;
@@ -42,6 +46,9 @@ riscv_find_vendor_opcode_hash (char *str ATTRIBUTE_UNUSED)
 
       switch (i)
 	{
+	case SIFIVE_EXT:
+	  insn = (struct riscv_opcode *) str_hash_find (op_sifive_hash, str);
+	  continue;
 	default:
 	  break;
 	}
@@ -55,6 +62,8 @@ riscv_vendor_subset_supports (int insn_class)
 {
   switch (insn_class)
     {
+    case INSN_CLASS_XSFCACHE:
+      return riscv_subset_supports ("xsfcache");
     default:
       as_fatal ("internal: unreachable");
       return FALSE;
