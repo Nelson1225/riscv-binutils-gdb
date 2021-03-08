@@ -3534,11 +3534,13 @@ riscv_merge_arch_attr_info (bfd *ibfd, char *in_arch, char *out_arch)
      the rpe_in.get_default_version and rpe_out.get_default_version to NULL.  */
   rpe_in.subset_list = &in_subsets;
   rpe_in.error_handler = _bfd_error_handler;
+  rpe_in.warning_handler = _bfd_error_handler;
   rpe_in.xlen = &xlen_in;
   rpe_in.get_default_version = NULL;
 
   rpe_out.subset_list = &out_subsets;
   rpe_out.error_handler = _bfd_error_handler;
+  rpe_out.warning_handler = _bfd_error_handler;
   rpe_out.xlen = &xlen_out;
   rpe_out.get_default_version = NULL;
 

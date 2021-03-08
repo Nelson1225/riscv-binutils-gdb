@@ -934,6 +934,9 @@ static const struct elf_reloc_map riscv_reloc_map[] =
   { BFD_RELOC_RISCV_32_PCREL, R_RISCV_32_PCREL },
 };
 
+/* Forward declarations for vendors.  */
+static bfd_boolean riscv_vendor_ext_valid_p (const char *);
+
 /* Given a BFD reloc type, return a howto structure.  */
 
 reloc_howto_type *
@@ -1541,11 +1544,20 @@ riscv_parse_prefixed_ext (riscv_parse_subset_t *rps,
       /* Check that the extension name is well-formed.  */
       if (!config->ext_valid_p (subset))
 	{
-	  rps->error_handler
-	    (_("-march=%s: unknown %s ISA extension `%s'"),
-	     march, config->prefix, subset);
-	  free (subset);
-	  return NULL;
+	  /* Single x is invalid.  */
+	  if (config->class == RV_ISA_CLASS_X
+	      && strcmp (subset, "x") != 0)
+	    rps->warning_handler
+		(_("-march=%s: unknown x ISA extension `%s'"),
+		 march, subset);
+	  else
+	    {
+	      rps->error_handler
+		(_("-march=%s: unknown %s ISA extension `%s'"),
+		 march, config->prefix, subset);
+	      free (subset);
+	      return NULL;
+	    }
 	}
 
       /* Check that the extension isn't duplicate.  */
@@ -1633,10 +1645,7 @@ riscv_multi_letter_ext_valid_p (const char *ext,
 static bfd_boolean
 riscv_ext_x_valid_p (const char *arg)
 {
-  if (!strcasecmp (arg, "x"))
-    return FALSE;
-
-  return TRUE;
+  return riscv_vendor_ext_valid_p (arg);
 }
 
 /* Predicator functions for z-prefixed extensions.
@@ -1968,3 +1977,5 @@ riscv_arch_str (unsigned xlen, const riscv_subset_list_t *subset)
 
   return attr_str;
 }
+
+#include "elfxx-riscv-vendor.c"

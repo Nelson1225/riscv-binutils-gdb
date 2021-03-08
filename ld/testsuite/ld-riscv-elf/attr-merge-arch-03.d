@@ -2,6 +2,7 @@
 #source: attr-merge-arch-03b.s
 #as:
 #ld: -r -m[riscv_choose_ilp32_emul]
+#warning_output: attr-merge-arch-03.l
 #readelf: -A
 
 Attribute Section: riscv

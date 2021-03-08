@@ -395,6 +395,7 @@ riscv_set_arch (const char *s)
   riscv_parse_subset_t rps;
   rps.subset_list = &riscv_subsets;
   rps.error_handler = as_bad;
+  rps.warning_handler = as_warn;
   rps.xlen = &xlen;
   rps.get_default_version = riscv_get_default_ext_version;
 

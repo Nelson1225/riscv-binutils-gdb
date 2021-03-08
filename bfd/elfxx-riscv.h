@@ -68,6 +68,8 @@ typedef struct
   riscv_subset_list_t *subset_list;
   void (*error_handler) (const char *,
 			 ...) ATTRIBUTE_PRINTF_1;
+  void (*warning_handler) (const char *,
+			   ...) ATTRIBUTE_PRINTF_1;
   unsigned *xlen;
   void (*get_default_version) (const char *,
 			       int *,
