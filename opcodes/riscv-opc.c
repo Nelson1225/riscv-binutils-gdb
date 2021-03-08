@@ -896,3 +896,5 @@ const struct riscv_opcode riscv_insn_types[] =
 /* Terminate the list.  */
 {0, 0, INSN_CLASS_NONE, 0, 0, 0, 0, 0}
 };
+
+#include "riscv-opc-vendor.c"

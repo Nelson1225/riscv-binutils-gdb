@@ -22,6 +22,7 @@
 #define _RISCV_H_
 
 #include "riscv-opc.h"
+#include "riscv-vendor.h"
 #include <stdlib.h>
 #include <stdint.h>
 
@@ -302,7 +303,7 @@ static const char * const riscv_pred_succ[16] =
 /* All RISC-V instructions belong to at least one of these classes.  */
 enum riscv_insn_class
 {
-  INSN_CLASS_NONE,
+  INSN_CLASS_NONE = INSN_CLASS_VENDOR_NUM,
 
   INSN_CLASS_I,
   INSN_CLASS_C,
