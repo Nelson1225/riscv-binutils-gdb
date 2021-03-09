@@ -19,5 +19,6 @@
 # MA 02110-1301, USA.
 
 if [istarget riscv*-*-*] {
+    run_dump_tests "vector-insns"
     run_dump_tests "sifive-cache"
 }
