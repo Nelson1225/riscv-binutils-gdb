@@ -58,6 +58,76 @@ const char * const riscv_vma[2] =
   "mu", "ma"
 };
 
+#define MASK_VD  (OP_MASK_VD << OP_SH_VD)
+#define MASK_VS1 (OP_MASK_VS1 << OP_SH_VS1)
+#define MASK_VS2 (OP_MASK_VS2 << OP_SH_VS2)
+#define MASK_VMASK (OP_MASK_VMASK << OP_SH_VMASK)
+
+static int
+match_vd_neq_vm (const struct riscv_opcode *op,
+		 insn_t insn,
+		 int constraints,
+		 const char **error)
+{
+  int vd = (insn & MASK_VD) >> OP_SH_VD;
+  int vm = (insn & MASK_VMASK) >> OP_SH_VMASK;
+
+  if (!constraints || error == NULL)
+    return match_opcode (op, insn, 0, NULL);
+
+  if (!vm && vm == vd)
+    *error = "illegal operands vd cannot overlap vm";
+  else
+    return match_opcode (op, insn, 0, NULL);
+  return 0;
+}
+
+static int
+match_vd_neq_vs2_neq_vm (const struct riscv_opcode *op,
+			 insn_t insn,
+			 int constraints,
+			 const char **error)
+{
+  int vd = (insn & MASK_VD) >> OP_SH_VD;
+  int vs2 = (insn & MASK_VS2) >> OP_SH_VS2;
+  int vm = (insn & MASK_VMASK) >> OP_SH_VMASK;
+
+  if (!constraints || error == NULL)
+    return match_opcode (op, insn, 0, NULL);
+
+  if (vs2 == vd)
+    *error = "illegal operands vd cannot overlap vs2";
+  else if (!vm && vm == vd)
+    *error = "illegal operands vd cannot overlap vm";
+  else
+    return match_opcode (op, insn, 0, NULL);
+  return 0;
+}
+
+static int
+match_narrow_vd_neq_vs2_neq_vm (const struct riscv_opcode *op,
+				insn_t insn,
+				int constraints,
+				const char **error)
+{
+  int vd = (insn & MASK_VD) >> OP_SH_VD;
+  int vs2 = (insn & MASK_VS2) >> OP_SH_VS2;
+  int vm = (insn & MASK_VMASK) >> OP_SH_VMASK;
+
+  if (!constraints || error == NULL)
+    return match_opcode (op, insn, 0, NULL);
+
+  if ((vs2 % 2) != 0)
+    *error = "illegal operands vd must be multiple of 2";
+  else if (vd >= vs2 && vd <= (vs2 + 1))
+    *error = "illegal operands vd cannot overlap vs2";
+  else if (!vm && vd >= vm && vd <= (vm + 1))
+    *error = "illegal operands vd cannot overlap vm";
+  else
+    return match_opcode (op, insn, 0, NULL);
+  return 0;
+}
+
 const struct riscv_opcode riscv_unratified_opcodes[] =
 {
 /* name, xlen, isa, operands, match, mask, match_func, pinfo.  */
@@ -65,14 +135,14 @@ const struct riscv_opcode riscv_unratified_opcodes[] =
 {"vsetvli",       0, INSN_CLASS_V,  "d,s,Vc", MATCH_VSETVLI, MASK_VSETVLI, match_opcode, 0},
 {"vsetivli",      0, INSN_CLASS_V,  "d,Z,Vb", MATCH_VSETIVLI, MASK_VSETIVLI, match_opcode, 0},
 
-{"vlseg2e8.v",    0, INSN_CLASS_V_OR_ZVLSSEG,  "Vd,0(s)Vm", MATCH_VLSEG2E8V, MASK_VLSEG2E8V, match_opcode, INSN_DREF },
-{"vsseg2e8.v",    0, INSN_CLASS_V_OR_ZVLSSEG,  "Vd,0(s)Vm", MATCH_VSSEG2E8V, MASK_VSSEG2E8V, match_opcode, INSN_DREF },
-{"vloxseg2ei8.v", 0, INSN_CLASS_V_OR_ZVLSSEG,  "Vd,0(s),VtVm", MATCH_VLOXSEG2EI8V, MASK_VLOXSEG2EI8V, match_opcode, INSN_DREF },
-{"vsoxseg2ei8.v", 0, INSN_CLASS_V_OR_ZVLSSEG,  "Vd,0(s),VtVm", MATCH_VSOXSEG2EI8V, MASK_VSOXSEG2EI8V, match_opcode, INSN_DREF },
+{"vlseg2e8.v",    0, INSN_CLASS_V_OR_ZVLSSEG,  "Vd,0(s)Vm", MATCH_VLSEG2E8V, MASK_VLSEG2E8V, match_vd_neq_vm, INSN_DREF },
+{"vsseg2e8.v",    0, INSN_CLASS_V_OR_ZVLSSEG,  "Vd,0(s)Vm", MATCH_VSSEG2E8V, MASK_VSSEG2E8V, match_vd_neq_vm, INSN_DREF },
+{"vloxseg2ei8.v", 0, INSN_CLASS_V_OR_ZVLSSEG,  "Vd,0(s),VtVm", MATCH_VLOXSEG2EI8V, MASK_VLOXSEG2EI8V, match_vd_neq_vs2_neq_vm, INSN_DREF },
+{"vsoxseg2ei8.v", 0, INSN_CLASS_V_OR_ZVLSSEG,  "Vd,0(s),VtVm", MATCH_VSOXSEG2EI8V, MASK_VSOXSEG2EI8V, match_vd_neq_vs2_neq_vm, INSN_DREF },
 
-{"vnsrl.wv",      0, INSN_CLASS_V,  "Vd,Vt,VsVm", MATCH_VNSRLWV, MASK_VNSRLWV, match_opcode, 0 },
-{"vnsrl.wx",      0, INSN_CLASS_V,  "Vd,Vt,sVm", MATCH_VNSRLWX, MASK_VNSRLWX, match_opcode, 0 },
-{"vnsrl.wi",      0, INSN_CLASS_V,  "Vd,Vt,VjVm", MATCH_VNSRLWI, MASK_VNSRLWI, match_opcode, 0 },
+{"vnsrl.wv",      0, INSN_CLASS_V,  "Vd,Vt,VsVm", MATCH_VNSRLWV, MASK_VNSRLWV, match_narrow_vd_neq_vs2_neq_vm, 0 },
+{"vnsrl.wx",      0, INSN_CLASS_V,  "Vd,Vt,sVm", MATCH_VNSRLWX, MASK_VNSRLWX, match_narrow_vd_neq_vs2_neq_vm, 0 },
+{"vnsrl.wi",      0, INSN_CLASS_V,  "Vd,Vt,VjVm", MATCH_VNSRLWI, MASK_VNSRLWI, match_narrow_vd_neq_vs2_neq_vm, 0 },
 
 /* Terminate the list.  */
 {0, 0, INSN_CLASS_NONE, 0, 0, 0, 0, 0 },

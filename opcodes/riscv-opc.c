@@ -83,65 +83,92 @@ const char * const riscv_fpr_names_abi[NFPR] =
 #define MASK_AQRL (MASK_AQ | MASK_RL)
 
 static int
-match_opcode (const struct riscv_opcode *op, insn_t insn)
+match_opcode (const struct riscv_opcode *op,
+	      insn_t insn,
+	      int constraints ATTRIBUTE_UNUSED,
+	      const char **error ATTRIBUTE_UNUSED)
 {
   return ((insn ^ op->match) & op->mask) == 0;
 }
 
 static int
 match_never (const struct riscv_opcode *op ATTRIBUTE_UNUSED,
-	     insn_t insn ATTRIBUTE_UNUSED)
+	     insn_t insn ATTRIBUTE_UNUSED,
+	     int constraints ATTRIBUTE_UNUSED,
+	     const char **error ATTRIBUTE_UNUSED)
 {
   return 0;
 }
 
 static int
-match_rs1_eq_rs2 (const struct riscv_opcode *op, insn_t insn)
+match_rs1_eq_rs2 (const struct riscv_opcode *op,
+		  insn_t insn,
+		  int constraints ATTRIBUTE_UNUSED,
+		  const char **error ATTRIBUTE_UNUSED)
 {
   int rs1 = (insn & MASK_RS1) >> OP_SH_RS1;
   int rs2 = (insn & MASK_RS2) >> OP_SH_RS2;
-  return match_opcode (op, insn) && rs1 == rs2;
+  return match_opcode (op, insn, 0, NULL) && rs1 == rs2;
 }
 
 static int
-match_rd_nonzero (const struct riscv_opcode *op, insn_t insn)
+match_rd_nonzero (const struct riscv_opcode *op,
+		  insn_t insn,
+		  int constraints ATTRIBUTE_UNUSED,
+		  const char **error ATTRIBUTE_UNUSED)
 {
-  return match_opcode (op, insn) && ((insn & MASK_RD) != 0);
+  return match_opcode (op, insn, 0, NULL) && ((insn & MASK_RD) != 0);
 }
 
 static int
-match_c_add (const struct riscv_opcode *op, insn_t insn)
+match_c_add (const struct riscv_opcode *op,
+	     insn_t insn,
+	     int constraints ATTRIBUTE_UNUSED,
+	     const char **error ATTRIBUTE_UNUSED)
 {
-  return match_rd_nonzero (op, insn) && ((insn & MASK_CRS2) != 0);
+  return match_rd_nonzero (op, insn, 0, NULL) && ((insn & MASK_CRS2) != 0);
 }
 
 /* We don't allow mv zero,X to become a c.mv hint, so we need a separate
    matching function for this.  */
 
 static int
-match_c_add_with_hint (const struct riscv_opcode *op, insn_t insn)
+match_c_add_with_hint (const struct riscv_opcode *op,
+		       insn_t insn,
+		       int constraints ATTRIBUTE_UNUSED,
+		       const char **error ATTRIBUTE_UNUSED)
 {
-  return match_opcode (op, insn) && ((insn & MASK_CRS2) != 0);
+  return match_opcode (op, insn, 0, NULL) && ((insn & MASK_CRS2) != 0);
 }
 
 static int
-match_c_nop (const struct riscv_opcode *op, insn_t insn)
+match_c_nop (const struct riscv_opcode *op,
+	     insn_t insn,
+	     int constraints ATTRIBUTE_UNUSED,
+	     const char **error ATTRIBUTE_UNUSED)
 {
-  return (match_opcode (op, insn)
+  return (match_opcode (op, insn, 0, NULL)
 	  && (((insn & MASK_RD) >> OP_SH_RD) == 0));
 }
 
 static int
-match_c_addi16sp (const struct riscv_opcode *op, insn_t insn)
+match_c_addi16sp (const struct riscv_opcode *op,
+		  insn_t insn,
+		  int constraints ATTRIBUTE_UNUSED,
+		  const char **error ATTRIBUTE_UNUSED)
 {
-  return (match_opcode (op, insn)
-	  && (((insn & MASK_RD) >> OP_SH_RD) == 2));
+  return (match_opcode (op, insn, 0, NULL)
+	  && (((insn & MASK_RD) >> OP_SH_RD) == 2)
+	  && EXTRACT_CITYPE_ADDI16SP_IMM (insn) != 0);
 }
 
 static int
-match_c_lui (const struct riscv_opcode *op, insn_t insn)
+match_c_lui (const struct riscv_opcode *op,
+	     insn_t insn,
+	     int constraints ATTRIBUTE_UNUSED,
+	     const char **error ATTRIBUTE_UNUSED)
 {
-  return (match_rd_nonzero (op, insn)
+  return (match_rd_nonzero (op, insn, 0, NULL)
 	  && (((insn & MASK_RD) >> OP_SH_RD) != 2)
 	  && EXTRACT_CITYPE_LUI_IMM (insn) != 0);
 }
@@ -150,50 +177,70 @@ match_c_lui (const struct riscv_opcode *op, insn_t insn)
    matching function for this.  */
 
 static int
-match_c_lui_with_hint (const struct riscv_opcode *op, insn_t insn)
+match_c_lui_with_hint (const struct riscv_opcode *op,
+		       insn_t insn,
+		       int constraints ATTRIBUTE_UNUSED,
+		       const char **error ATTRIBUTE_UNUSED)
 {
-  return (match_opcode (op, insn)
+  return (match_opcode (op, insn, 0, NULL)
 	  && (((insn & MASK_RD) >> OP_SH_RD) != 2)
 	  && EXTRACT_CITYPE_LUI_IMM (insn) != 0);
 }
 
 static int
-match_c_addi4spn (const struct riscv_opcode *op, insn_t insn)
+match_c_addi4spn (const struct riscv_opcode *op,
+		  insn_t insn,
+		  int constraints ATTRIBUTE_UNUSED,
+		  const char **error ATTRIBUTE_UNUSED)
 {
-  return match_opcode (op, insn) && EXTRACT_CIWTYPE_ADDI4SPN_IMM (insn) != 0;
+  return (match_opcode (op, insn, 0, NULL)
+	  && EXTRACT_CIWTYPE_ADDI4SPN_IMM (insn) != 0);
 }
 
 /* This requires a non-zero shift.  A zero rd is a hint, so is allowed.  */
 
 static int
-match_c_slli (const struct riscv_opcode *op, insn_t insn)
+match_c_slli (const struct riscv_opcode *op,
+	      insn_t insn,
+	      int constraints ATTRIBUTE_UNUSED,
+	      const char **error ATTRIBUTE_UNUSED)
 {
-  return match_opcode (op, insn) && EXTRACT_CITYPE_IMM (insn) != 0;
+  return match_opcode (op, insn, 0, NULL) && EXTRACT_CITYPE_IMM (insn) != 0;
 }
 
 /* This requires a non-zero rd, and a non-zero shift.  */
 
 static int
-match_slli_as_c_slli (const struct riscv_opcode *op, insn_t insn)
+match_slli_as_c_slli (const struct riscv_opcode *op,
+		      insn_t insn,
+		      int constraints ATTRIBUTE_UNUSED,
+		      const char **error ATTRIBUTE_UNUSED)
 {
-  return match_rd_nonzero (op, insn) && EXTRACT_CITYPE_IMM (insn) != 0;
+  return (match_rd_nonzero (op, insn, 0, NULL)
+	  && EXTRACT_CITYPE_IMM (insn) != 0);
 }
 
 /* This requires a zero shift.  A zero rd is a hint, so is allowed.  */
 
 static int
-match_c_slli64 (const struct riscv_opcode *op, insn_t insn)
+match_c_slli64 (const struct riscv_opcode *op,
+		insn_t insn,
+		int constraints ATTRIBUTE_UNUSED,
+		const char **error ATTRIBUTE_UNUSED)
 {
-  return match_opcode (op, insn) && EXTRACT_CITYPE_IMM (insn) == 0;
+  return match_opcode (op, insn, 0, NULL) && EXTRACT_CITYPE_IMM (insn) == 0;
 }
 
 /* This is used for both srli and srai.  This requires a non-zero shift.
    A zero rd is not possible.  */
 
 static int
-match_srxi_as_c_srxi (const struct riscv_opcode *op, insn_t insn)
+match_srxi_as_c_srxi (const struct riscv_opcode *op,
+		      insn_t insn,
+		      int constraints ATTRIBUTE_UNUSED,
+		      const char **error ATTRIBUTE_UNUSED)
 {
-  return match_opcode (op, insn) && EXTRACT_CITYPE_IMM (insn) != 0;
+  return match_opcode (op, insn, 0, NULL) && EXTRACT_CITYPE_IMM (insn) != 0;
 }
 
 const struct riscv_opcode riscv_opcodes[] =

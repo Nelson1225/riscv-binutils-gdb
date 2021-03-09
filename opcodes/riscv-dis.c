@@ -476,7 +476,7 @@ riscv_disassemble_opcode (insn_t word,
 	  for (; op->name; op++)
 	    {
 	      /* Does the opcode match?  */
-	      if (! (op->match_func) (op, word))
+	      if (! (op->match_func) (op, word, 0, NULL))
 		continue;
 	      /* Is this a pseudo-instruction and may we print it as such?  */
 	      if (no_aliases && (op->pinfo & INSN_ALIAS))
