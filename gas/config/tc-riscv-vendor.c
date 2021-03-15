@@ -25,6 +25,14 @@ enum
   VENDOR_EXT_NUM
 };
 
+static const struct riscv_ext_version vendor_ext_version_table[] =
+{
+  {"v", ISA_SPEC_CLASS_DRAFT, 0, 10},
+  {"zvlsseg", ISA_SPEC_CLASS_DRAFT, 0, 10},
+
+  {"xsfcache", ISA_SPEC_CLASS_DRAFT, 0, 1},
+};
+
 static htab_t op_unratified_hash;
 static htab_t op_sifive_hash;
 

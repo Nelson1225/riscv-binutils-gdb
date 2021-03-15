@@ -145,6 +145,7 @@ static const struct riscv_ext_version ext_version_table[] =
 };
 
 /* Forward declarations for vendors.  */
+static const struct riscv_ext_version vendor_ext_version_table[];
 static void riscv_vendor_md_begin (void);
 static struct riscv_opcode * riscv_find_vendor_opcode_hash (char *);
 static bfd_boolean riscv_vendor_subset_supports (int);
@@ -354,10 +355,26 @@ static htab_t ext_version_hash = NULL;
 static htab_t
 init_ext_version_hash (void)
 {
-  const struct riscv_ext_version *table = ext_version_table;
+  const struct riscv_ext_version *table;
   htab_t hash = str_htab_create ();
-  int i = 0;
+  int i;
 
+  i = 0;
+  table = ext_version_table;
+  while (table[i].name)
+    {
+      const char *name = table[i].name;
+      if (str_hash_insert (hash, name, &table[i], 0) != NULL)
+	as_fatal (_("internal: duplicate %s"), name);
+
+      i++;
+      while (table[i].name
+	     && strcmp (table[i].name, name) == 0)
+       i++;
+    }
+
+  i = 0;
+  table = vendor_ext_version_table;
   while (table[i].name)
     {
       const char *name = table[i].name;

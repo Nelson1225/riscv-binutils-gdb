@@ -935,6 +935,7 @@ static const struct elf_reloc_map riscv_reloc_map[] =
 };
 
 /* Forward declarations for vendors.  */
+static bfd_boolean riscv_unratified_ext_valid_p (const char *);
 static bfd_boolean riscv_vendor_ext_valid_p (const char *);
 
 /* Given a BFD reloc type, return a howto structure.  */
@@ -1203,7 +1204,7 @@ riscv_parse_add_subset (riscv_parse_subset_t *rps,
 
       if (subset[0] == 'x')
 	rps->error_handler
-	  (_("x ISA extension `%s' must be set with the versions"),
+	  (_("unknown x ISA extension `%s' must be set with the versions"),
 	   subset);
       else
 	rps->error_handler
@@ -1654,7 +1655,8 @@ riscv_ext_x_valid_p (const char *arg)
 static bfd_boolean
 riscv_ext_z_valid_p (const char *arg)
 {
-  return riscv_multi_letter_ext_valid_p (arg, riscv_std_z_ext_strtab);
+  return riscv_multi_letter_ext_valid_p (arg, riscv_std_z_ext_strtab)
+	 || riscv_unratified_ext_valid_p (arg);
 }
 
 /* Predicator function for 's' prefixed extensions.

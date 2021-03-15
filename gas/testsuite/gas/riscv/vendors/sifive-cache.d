@@ -1,4 +1,4 @@
-#as: -march=rv64i_xsfcache1p0
+#as: -march=rv64i_xsfcache
 #objdump: -dr
 
 .*:[ 	]+file format .*

@@ -20,6 +20,10 @@
    along with this program; see the file COPYING3. If not,
    see <http://www.gnu.org/licenses/>.  */
 
+static const char * const riscv_unratified_ext_strtab[] =
+{
+  "zvlsseg", NULL
+};
 
 static const char * const riscv_sifive_ext_strtab[] =
 {
@@ -31,6 +35,12 @@ static const char ** const riscv_vendor_ext_strtab[] =
   (const char **) riscv_sifive_ext_strtab,
   NULL
 };
+
+static bfd_boolean
+riscv_unratified_ext_valid_p (const char *arg)
+{
+  return riscv_multi_letter_ext_valid_p (arg, riscv_unratified_ext_strtab);
+}
 
 static bfd_boolean
 riscv_vendor_ext_valid_p (const char *arg)
